@@ -1,0 +1,1 @@
+{"sharded_backend": "torch_dist", "sharded_backend_version": 1}
