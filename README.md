@@ -39,4 +39,8 @@ PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True  torchrun --nproc_per_node=1 ex
 
 ## 训练结果
 
-![训练信息](https://github.com/LunarCM/Megatron-for-pc/tree/main/examples/logs)
+![训练信息](https://github.com/LunarCM/Megatron-for-pc/tree/main/examples/logs/logs.png)
+
+
+## THANKS
+感谢Megatron项目和公开数据trixyL/simplestories-4k-megatron，伟大无需多言。
