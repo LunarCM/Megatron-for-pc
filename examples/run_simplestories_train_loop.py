@@ -1,64 +1,43 @@
 # Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
 #
-# A minimal Megatron-Core GPT training loop that trains on the real
-# SimpleStories dataset (simplestories-4k) instead of the mock data used in
-# `run_simple_mcore_train_loop.py`.
+# A minimal Megatron-Core GPT training loop for the SimpleStories dataset.
 #
-# Usage (single GPU, recommended for the ~12 GB card the defaults target):
+# Usage (single GPU, defaults tuned for a ~12 GB card):
 #   cd /home/lxk/PycharmProjects/My_megatron
 #   PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
 #     torchrun --nproc_per_node=1 examples/run_simplestories_train_loop.py
 #
-# A checkpoint + validation + samples run every SIMPLESTORIES_CKPT_INTERVAL
-# steps (default 5000) into examples/ckpt/step_XXXXX, keeping only the 3 most
-# recent. To evaluate any saved checkpoint later (e.g. after an interrupted
-# run), use the standalone script:
+# Every SIMPLESTORIES_CKPT_INTERVAL steps (default 5000) a checkpoint plus
+# validation/samples are written to <script>/ckpt/step_XXXXX (last 3 kept).
+# Evaluate any saved checkpoint with:
 #   PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
 #     torchrun --nproc_per_node=1 examples/evaluate_checkpoint.py \
 #       --checkpoint examples/ckpt/step_5000
 #
-# Environment variables (all optional):
-#   SIMPLESTORIES_DATA_DIR : directory containing the .bin/.idx files
-#                            (defaults to the repo-local simplestories-4k-megatron)
-#   SIMPLESTORIES_TOKENIZER_DIR : directory containing vocab.json/merges.txt
-#                            (defaults to <DATA_DIR>/tokenizer)
-#   SIMPLESTORIES_SEQUENCE_LENGTH : model sequence length (defaults to 1024;
-#                            attention memory is O(seq^2), so 2048 needs ~1 GiB
-#                            more per attention step and OOMs on a 12 GB GPU)
-#   SIMPLESTORIES_MICRO_BATCH_SIZE : micro batch size (defaults to 2;
-#                            raise to 4 only if you have VRAM headroom)
-#   SIMPLESTORIES_NUM_SAMPLES_TRAIN : number of training samples (defaults to 1000)
-#   SIMPLESTORIES_NUM_EPOCHS : number of training epochs (defaults to 3)
-#   SIMPLESTORIES_LOG_INTERVAL : print loss every N steps (defaults to 100)
-#   SIMPLESTORIES_LEARNING_RATE : Adam learning rate (defaults to 1e-4;
-#                            raise up to 3e-4 only with clipping+stable loss)
-#   SIMPLESTORIES_GRAD_CLIP : global gradient L2-norm cap, 0 disables (defaults to 1.0)
-#   SIMPLESTORIES_LR_WARMUP_STEPS : linear LR warmup steps, 0 disables (defaults to 2000)
-#   SIMPLESTORIES_CKPT_DIR : directory for checkpoints (defaults to <script>/ckpt)
-#   SIMPLESTORIES_LOG_DIR : directory for the timestamped local training log
-#                            (defaults to <script>/logs, e.g. train_<ts>.log;
-#                            every printed line is also written there)
-#   SIMPLESTORIES_CKPT_INTERVAL : save a checkpoint + eval every N steps (defaults to 5000)
-#   SIMPLESTORIES_CKPT_KEEP : keep only the N most recent step_* checkpoints,
-#                            deleting older ones (defaults to 3)
-#   SIMPLESTORIES_EVAL_NUM_BATCHES : number of validation batches per eval (defaults to 200)
-#   SIMPLESTORIES_NUM_SAMPLES : generated samples per eval, 0 disables (defaults to 2)
-#   SIMPLESTORIES_SAMPLE_PROMPT_LENGTH : prompt length in tokens (defaults to 32)
-#   SIMPLESTORIES_SAMPLE_MAX_NEW_TOKENS : generated tokens per sample (defaults to 64)
-#   SIMPLESTORIES_SAMPLE_TEMPERATURE : sampling temperature (defaults to 0.8)
-#   SIMPLESTORIES_NUM_LAYERS : number of transformer layers (defaults to 14;
-#                            raise to 16/20 to use more VRAM, watch nvidia-smi)
-#   SIMPLESTORIES_HIDDEN_SIZE : hidden size (defaults to 1024)
-#   SIMPLESTORIES_NUM_ATTENTION_HEADS : number of attention heads (defaults to 16)
-#   SIMPLESTORIES_RECOMPUTE : activation recomputation: "full" (default) is the
-#                            stable choice for ~12 GB GPUs; "selective" is faster
-#                            but uses more VRAM; "none" uses the most VRAM
-#
-# Defaults are tuned for a ~12 GB GPU. Measured: seq 2048 OOMs (the attention
-# step alone is ~1 GiB on top of ~9.5 GB steady state), so the default uses
-# seq 1024 which cuts that transient to ~256 MiB. If you hit OOM, reduce (in
-# order) MICRO_BATCH_SIZE, SEQUENCE_LENGTH, NUM_LAYERS, or HIDDEN_SIZE; to use
-# more memory, raise NUM_LAYERS a step at a time while watching nvidia-smi.
+# All settings are SIMPLESTORIES_* environment variables (defaults below):
+#   SIMPLESTORIES_DATA_DIR : data dir with .bin/.idx files (default: repo-local simplestories-4k-megatron)
+#   SIMPLESTORIES_TOKENIZER_DIR : tokenizer dir with vocab.json/merges.txt (default: <DATA_DIR>/tokenizer)
+#   SIMPLESTORIES_SEQUENCE_LENGTH : sequence length (default: 1024)
+#   SIMPLESTORIES_MICRO_BATCH_SIZE : micro batch size (default: 2)
+#   SIMPLESTORIES_NUM_SAMPLES_TRAIN : training samples (default: 1000)
+#   SIMPLESTORIES_NUM_EPOCHS : training epochs (default: 3)
+#   SIMPLESTORIES_LOG_INTERVAL : print loss every N steps (default: 100)
+#   SIMPLESTORIES_LEARNING_RATE : Adam learning rate (default: 1e-4)
+#   SIMPLESTORIES_GRAD_CLIP : global grad L2 clip, 0 disables (default: 1.0)
+#   SIMPLESTORIES_LR_WARMUP_STEPS : LR warmup steps, 0 disables (default: 2000)
+#   SIMPLESTORIES_CKPT_DIR : checkpoint dir (default: <script>/ckpt)
+#   SIMPLESTORIES_LOG_DIR : log dir (default: <script>/logs)
+#   SIMPLESTORIES_CKPT_INTERVAL : checkpoint + eval every N steps (default: 5000)
+#   SIMPLESTORIES_CKPT_KEEP : keep N most recent checkpoints (default: 3)
+#   SIMPLESTORIES_EVAL_NUM_BATCHES : validation batches per eval (default: 200)
+#   SIMPLESTORIES_NUM_SAMPLES : generated samples per eval, 0 disables (default: 2)
+#   SIMPLESTORIES_SAMPLE_PROMPT_LENGTH : prompt length in tokens (default: 32)
+#   SIMPLESTORIES_SAMPLE_MAX_NEW_TOKENS : generated tokens per sample (default: 64)
+#   SIMPLESTORIES_SAMPLE_TEMPERATURE : sampling temperature (default: 0.8)
+#   SIMPLESTORIES_NUM_LAYERS : transformer layers (default: 14)
+#   SIMPLESTORIES_HIDDEN_SIZE : hidden size (default: 1024)
+#   SIMPLESTORIES_NUM_ATTENTION_HEADS : attention heads (default: 16)
+#   SIMPLESTORIES_RECOMPUTE : "full" (default) | "selective" | "none"
 
 import atexit
 import gc
@@ -91,52 +70,42 @@ from megatron.core.distributed import DistributedDataParallelConfig
 from megatron.core.distributed.finalize_model_grads import finalize_model_grads
 from megatron.core.tokenizers import MegatronTokenizer
 
-# NOTE: attention memory grows as O(batch * seq_len^2), and stored activations
-# grow with layers * batch * seq_len * hidden_size. Measured on the target GPU:
-# seq 2048 / batch 4 OOMs (attention transient alone is ~1 GiB on top of
-# ~9.5 GB steady state). seq 1024 is the stable default; scale up gradually.
+# Attention memory grows as O(batch * seq_len^2); 1024 is the stable default
+# on a ~12 GB GPU (2048 OOMs).
 _SEQUENCE_LENGTH: int = int(os.environ.get("SIMPLESTORIES_SEQUENCE_LENGTH", "1024"))
 _MICRO_BATCH_SIZE: int = int(os.environ.get("SIMPLESTORIES_MICRO_BATCH_SIZE", "2"))
 _NUM_SAMPLES_TRAIN: int = int(os.environ.get("SIMPLESTORIES_NUM_SAMPLES_TRAIN", "1000"))
 _NUM_EPOCHS: int = int(os.environ.get("SIMPLESTORIES_NUM_EPOCHS", "3"))
 _LOG_INTERVAL: int = int(os.environ.get("SIMPLESTORIES_LOG_INTERVAL", "100"))
-# lr=1e-4 with clipping+warmup is the stable default; 3e-4 was observed to
-# diverge at batch=2 around step ~5000 (loss rose from 3.9 to 4.9, grad_norm 20-100).
+# 1e-4 is the stable default; higher LR tends to diverge without clipping.
 _LEARNING_RATE: float = float(os.environ.get("SIMPLESTORIES_LEARNING_RATE", "1e-4"))
-# Gradient clipping: caps the global grad L2 norm each step. Without it, a
-# few large-loss batches can push grads from ~1 to 20-100 and the run
-# diverges (observed at lr=3e-4 / batch=2 around step ~5000).
+# Cap the global grad L2 norm each step; without it the run can diverge.
 _GRAD_CLIP: float = float(os.environ.get("SIMPLESTORIES_GRAD_CLIP", "1.0"))
 # Linear LR warmup over the first N steps (0 disables).
 _LR_WARMUP_STEPS: int = int(os.environ.get("SIMPLESTORIES_LR_WARMUP_STEPS", "2000"))
-# Model size (tune via env vars; 14 layers + seq 1024 is the stable default
-# for a ~12 GB GPU).
+# Model size; 14 layers fits a ~12 GB GPU.
 _NUM_LAYERS: int = int(os.environ.get("SIMPLESTORIES_NUM_LAYERS", "14"))
 _HIDDEN_SIZE: int = int(os.environ.get("SIMPLESTORIES_HIDDEN_SIZE", "1024"))
 _NUM_ATTENTION_HEADS: int = int(os.environ.get("SIMPLESTORIES_NUM_ATTENTION_HEADS", "16"))
 
-# Activation recomputation: "full" recomputes every transformer layer during
-# backward, which drastically cuts activation memory (stable default for a
-# ~12 GB GPU). "selective" stores more activations (faster, but uses more
-# VRAM); switch only if you have headroom and want speed.
+# "full" (default) recomputes activations to save VRAM; "selective" is faster
+# but uses more memory; "none" uses the most.
 _RECOMPUTE: str = os.environ.get("SIMPLESTORIES_RECOMPUTE", "full").lower()
 if _RECOMPUTE not in ("full", "selective", "none"):
     _RECOMPUTE = "full"
 
-# Cache directory for dataset indices (kept out of the data dir).
+# Dataset index cache (kept out of the data dir).
 _SCRIPT_DIR: str = os.path.dirname(os.path.abspath(__file__))
 _CACHE_DIR: str = os.environ.get(
     "SIMPLESTORIES_CACHE_DIR", os.path.join(_SCRIPT_DIR, ".cache", "dataset")
 )
 
-# Local log directory: every line printed during the run (loss, grad_norm,
-# eval loss, samples, checkpoint messages) is also written to a
-# timestamped file here via a stdout/stderr tee.
+# Console output is also written to a timestamped log file here.
 _LOG_DIR: str = os.environ.get(
     "SIMPLESTORIES_LOG_DIR", os.path.join(_SCRIPT_DIR, "logs")
 )
 
-# Checkpointing, validation and sample generation.
+# Checkpointing / eval / sampling settings.
 _CKPT_DIR: str = os.environ.get(
     "SIMPLESTORIES_CKPT_DIR", os.path.join(_SCRIPT_DIR, "ckpt")
 )
@@ -154,7 +123,7 @@ _SAMPLE_TEMPERATURE: float = float(
     os.environ.get("SIMPLESTORIES_SAMPLE_TEMPERATURE", "0.8")
 )
 
-# Paths to the SimpleStories (4k vocab) dataset and its BPE tokenizer.
+# SimpleStories (4k vocab) dataset and tokenizer paths.
 _DEFAULT_DATA_DIR: str = "/home/lxk/PycharmProjects/My_megatron/simplestories-4k-megatron"
 _DATA_DIR: str = os.environ.get("SIMPLESTORIES_DATA_DIR", _DEFAULT_DATA_DIR)
 _TOKENIZER_DIR: str = os.environ.get(
@@ -167,13 +136,7 @@ _TEST_DATA_PREFIX: str = os.path.join(_DATA_DIR, "simplestories_test_text_docume
 def initialize_distributed(
     tensor_model_parallel_size: int = 1, pipeline_model_parallel_size: int = 1
 ) -> None:
-    """
-    Set up torch.distributed and Megatron-Core model parallel groups.
-
-    Args:
-        tensor_model_parallel_size (int): Number of GPUs to use for tensor model parallelism.
-        pipeline_model_parallel_size (int): Number of GPUs to use for pipeline model parallelism.
-    """
+    """Initialize torch.distributed and Megatron-Core model parallel groups."""
     parallel_state.destroy_model_parallel()
 
     # Torch setup for distributed training
@@ -193,14 +156,7 @@ def initialize_distributed(
 
 
 def get_tokenizer():
-    """
-    Load the SimpleStories 4k-vocab BPE tokenizer through HuggingFace.
-
-    The tokenizer is a GPT2-style BPE tokenizer whose vocabulary lives in
-    `<DATA_DIR>/tokenizer/` (standard HF names: vocab.json + merges.txt +
-    tokenizer_config.json). The `<|endoftext|>` special token (id 4095) is
-    used as the end-of-document token.
-    """
+    """Load the SimpleStories 4k-vocab BPE tokenizer from <DATA_DIR>/tokenizer."""
     return MegatronTokenizer.from_pretrained(
         tokenizer_path=_TOKENIZER_DIR,
         metadata_path={"library": "huggingface"},
@@ -209,27 +165,14 @@ def get_tokenizer():
 
 
 def model_provider(vocab_size: int) -> GPTModel:
-    """
-    Construct a GPT model for training on SimpleStories.
-
-    The vocabulary size must match the SimpleStories tokenizer (4097), unlike
-    the mock example which used a hard-coded vocab size of 100.
-
-    Args:
-        vocab_size (int): The tokenizer vocabulary size.
-
-    Returns:
-        GPTModel: A GPT model instance with _NUM_LAYERS layers.
-    """
+    """Build the GPT model (vocab size must match the SimpleStories tokenizer)."""
     transformer_config: TransformerConfig = TransformerConfig(
         num_layers=_NUM_LAYERS,
         hidden_size=_HIDDEN_SIZE,
         num_attention_heads=_NUM_ATTENTION_HEADS,
         use_cpu_initialization=True,
         pipeline_dtype=torch.float32,
-        # Recompute core attention during backward instead of storing all
-        # activation tensors. This trades a little compute for a large reduction
-        # in memory, letting a bigger model fit stably on the GPU.
+        # Recompute activations during backward to trade compute for GPU memory.
         recompute_granularity=(None if _RECOMPUTE == "none" else _RECOMPUTE),
         recompute_method=("block" if _RECOMPUTE == "full" else None),
         recompute_num_layers=(1 if _RECOMPUTE == "full" else None),
@@ -246,12 +189,7 @@ def model_provider(vocab_size: int) -> GPTModel:
 
 
 class _EpochCyclingIterator:
-    """DataLoader wrapper that never exhausts: after one epoch it re-creates the
-    DataLoader iterator (reshuffling the data) and starts the next epoch.
-
-    This lets the training loop run multiple epochs over the same dataset, which
-    mirrors how real Megatron training consumes data.
-    """
+    """DataLoader wrapper that cycles epochs, reshuffling the data each time."""
 
     def __init__(self, dataloader: DataLoader) -> None:
         self.dataloader = dataloader
@@ -268,21 +206,7 @@ class _EpochCyclingIterator:
 
 
 def get_train_data_iterator(tokenizer) -> Tuple[_EpochCyclingIterator, int]:
-    """
-    Initialize and return an iterator over the training dataset for the GPT model.
-
-    This function builds a real Megatron GPTDataset from the pre-tokenized
-    SimpleStories `.bin` / `.idx` files (train and test splits), and returns a
-    DataLoader iterator over the training split.
-
-    Args:
-        tokenizer: The tokenizer to use for the dataset (needed for the eod id).
-
-    Returns:
-        Tuple[_EpochCyclingIterator, int, DataLoader]: An iterator that yields
-            training batches (cycling across epochs), the number of training
-            samples, and a validation DataLoader built from the test split.
-    """
+    """Build the training iterator, sample count, and eval DataLoader."""
     if torch.distributed.is_available() and torch.distributed.is_initialized():
         if torch.distributed.get_rank() == 0:
             compile_helpers()
@@ -298,8 +222,7 @@ def get_train_data_iterator(tokenizer) -> Tuple[_EpochCyclingIterator, int]:
         eod_mask_loss=False,
         tokenizer=tokenizer,
         path_to_cache=_CACHE_DIR,
-        # Each split uses its own pre-tokenized data file:
-        # [train_prefix, valid_prefix, test_prefix]
+        # Each split uses its own pre-tokenized file: [train, valid, test].
         blend_per_split=[
             ([_TRAIN_DATA_PREFIX], None),
             ([_TEST_DATA_PREFIX], None),
@@ -317,7 +240,7 @@ def get_train_data_iterator(tokenizer) -> Tuple[_EpochCyclingIterator, int]:
         train_dataset, batch_size=_MICRO_BATCH_SIZE, shuffle=True
     )
 
-    # Validation split uses the pre-tokenized test file (datasets[1]).
+    # Validation split uses the test file (datasets[1]).
     eval_dataloader: DataLoader = DataLoader(
         datasets[1], batch_size=_MICRO_BATCH_SIZE, shuffle=False
     )
@@ -326,12 +249,7 @@ def get_train_data_iterator(tokenizer) -> Tuple[_EpochCyclingIterator, int]:
 
 
 def get_eval_dataloader(tokenizer) -> DataLoader:
-    """
-    Build a validation DataLoader from the test split only.
-
-    Unlike get_train_data_iterator(), this does not build the (large) training
-    split, so it is cheap enough to run standalone on any saved checkpoint.
-    """
+    """Build a validation DataLoader from the test split (no training split)."""
     if torch.distributed.is_available() and torch.distributed.is_initialized():
         if torch.distributed.get_rank() == 0:
             compile_helpers()
@@ -360,29 +278,10 @@ def get_eval_dataloader(tokenizer) -> DataLoader:
 def forward_step_func(
     data_iterator: Iterator, model: torch.nn.Module
 ) -> Tuple[torch.Tensor, Callable[[torch.Tensor], Dict[str, torch.Tensor]]]:
-    """
-    Forward step for the Megatron pipeline schedule.
-
-    Args:
-        data_iterator (Iterator): Iterator over the training data.
-        model (torch.nn.Module): The model.
-
-    Returns:
-        Tuple[torch.Tensor, Callable[[torch.Tensor], Dict[str, torch.Tensor]]]:
-            The output tensor and a loss function.
-    """
+    """Forward step for the Megatron pipeline schedule (output tensor + loss func)."""
 
     def loss_func(loss_mask: torch.Tensor, output_tensor: torch.Tensor):
-        """
-        Compute the masked cross-entropy loss.
-
-        Args:
-            loss_mask (torch.Tensor): Mask to zero-out loss on non-target tokens.
-            output_tensor (torch.Tensor): The model output.
-
-        Returns:
-            Tuple[torch.Tensor, Dict[str, torch.Tensor]]: The loss and a dict of losses.
-        """
+        """Compute the masked cross-entropy loss."""
         losses = output_tensor.float()
         loss_mask = loss_mask.view(-1).float()
         loss = torch.sum(losses.view(-1) * loss_mask) / loss_mask.sum()
@@ -392,10 +291,7 @@ def forward_step_func(
 
     data: Dict[str, torch.Tensor] = next(data_iterator)
     tokens: torch.Tensor = data["tokens"].to(device)
-    # Pass attention_mask=None: with AttnMaskType.causal the model generates the
-    # proper bool causal mask internally. (The GPTDataset float tril mask would
-    # both trip torch's bool-only masked_fill and, in the torch softmax fallback,
-    # mask the wrong triangle.)
+    # Use the model's built-in causal mask instead of the dataset's float mask.
     attention_mask: Optional[torch.Tensor] = None
     position_ids: torch.Tensor = data["position_ids"].to(device)
     labels: torch.Tensor = data["labels"].to(device)
@@ -409,15 +305,7 @@ def forward_step_func(
 
 
 def _extract_losses(losses_reduced) -> Dict[str, float]:
-    """
-    Convert the value returned by forward_backward_func() into a dict of floats.
-
-    In current Megatron-Core, forward_backward_func() returns forward_data_store,
-    a *list* with one entry per microbatch, each entry being the dict returned by
-    the loss function (e.g. {"lm loss": tensor}). Older versions returned the dict
-    directly. Average across microbatches and float() each entry so callers can
-    always index with the metric name.
-    """
+    """Flatten forward_backward_func()'s per-microbatch losses into a float dict."""
     if isinstance(losses_reduced, dict):
         return {k: float(v.detach()) for k, v in losses_reduced.items()}
     out: Dict[str, float] = {}
@@ -449,12 +337,7 @@ def evaluate_loss(
     forward_backward_func: Callable[..., Dict[str, Any]],
     num_batches: Optional[int] = None,
 ) -> float:
-    """
-    Evaluate the average LM loss over a fixed number of validation batches.
-
-    Uses forward_only=True so no gradients are computed, and eval mode disables
-    dropout. num_batches overrides _EVAL_NUM_BATCHES when provided.
-    """
+    """Average LM loss over validation batches (no gradients; eval mode)."""
     gpt_model.eval()
     eval_iterator: Iterator = iter(eval_dataloader)
     num_batches: int = min(
@@ -481,9 +364,7 @@ def evaluate_loss(
 def get_sample_prompts(
     eval_dataloader: DataLoader, num_prompts: int, prompt_length: int
 ) -> List[torch.Tensor]:
-    """
-    Pull a few short prompt sequences from the validation set for generation.
-    """
+    """Pull short prompt sequences from the validation set for generation."""
     prompts: List[torch.Tensor] = []
     for batch in eval_dataloader:
         tokens: torch.Tensor = batch["tokens"]
@@ -502,13 +383,7 @@ def generate_samples(
     max_new_tokens: int,
     temperature: float,
 ) -> List[str]:
-    """
-    Autoregressively generate continuations for each prompt and return text.
-
-    Sampling is done from the softmax over the last position with temperature.
-    Note: no KV cache is used, so generation is O(seq^2) per step; fine for
-    short samples.
-    """
+    """Generate continuations for each prompt (sampling, no KV cache)."""
     raw_model: torch.nn.Module = (
         gpt_model.module if hasattr(gpt_model, "module") else gpt_model
     )
@@ -539,9 +414,7 @@ def evaluate_and_generate(
     tokenizer,
     forward_backward_func: Callable[..., Dict[str, Any]],
 ) -> float:
-    """
-    Evaluate validation loss and generate a few samples, printing both.
-    """
+    """Evaluate validation loss and print a few generated samples."""
     eval_loss: float = evaluate_loss(gpt_model, eval_dataloader, forward_backward_func)
     print(f"[eval] {step_label}: eval_loss={eval_loss:.4f}")
 
@@ -569,13 +442,7 @@ def evaluate_and_generate(
 def save_distributed_checkpoint(
     checkpoint_path: str, gpt_model: torch.nn.Module
 ) -> None:
-    """
-    Save a distributed checkpoint of the GPT model using Megatron-Core utilities.
-
-    Args:
-        checkpoint_path (str): Directory path where the checkpoint will be saved.
-        gpt_model (torch.nn.Module): The GPT model to checkpoint (may be wrapped with DDP).
-    """
+    """Save a Megatron-Core distributed checkpoint (handles DDP-wrapped models)."""
     # Access underlying model if wrapped with DDP
     model: torch.nn.Module = (
         gpt_model.module if hasattr(gpt_model, "module") else gpt_model
@@ -589,16 +456,7 @@ def save_distributed_checkpoint(
 def load_distributed_checkpoint(
     checkpoint_path: str, gpt_model: torch.nn.Module
 ) -> torch.nn.Module:
-    """
-    Load a distributed checkpoint into the GPT model using Megatron-Core utilities.
-
-    Args:
-        checkpoint_path (str): Directory path from which to load the checkpoint.
-        gpt_model (torch.nn.Module): The GPT model to load the checkpoint into (may be wrapped with DDP).
-
-    Returns:
-        torch.nn.Module: The model with loaded checkpoint weights.
-    """
+    """Load a Megatron-Core distributed checkpoint into the model."""
     # Access underlying model if wrapped with DDP
     model: torch.nn.Module = (
         gpt_model.module if hasattr(gpt_model, "module") else gpt_model
@@ -612,11 +470,7 @@ def load_distributed_checkpoint(
 
 
 class _Tee:
-    """Duplicate writes to a stream (stdout/stderr) into an open log file.
-
-    Every write is flushed immediately so the log stays up to date even if the
-    process is killed or the GPU OOMs mid-run.
-    """
+    """Duplicate stream writes into a log file, flushing each write."""
 
     def __init__(self, stream, log_handle):
         self._stream = stream
@@ -627,8 +481,7 @@ class _Tee:
 
     def write(self, message):
         self._stream.write(message)
-        # Skip the file side once it has been closed at interpreter shutdown
-        # (late writes from e.g. sys.unraisablehook would otherwise raise).
+        # Skip the log once it has been closed at interpreter shutdown.
         if not self._log_handle.closed:
             self._log_handle.write(message)
             self._log_handle.flush()
@@ -646,11 +499,7 @@ class _Tee:
 
 
 def setup_logging() -> str:
-    """
-    Tee all console output (stdout + stderr) into a local log file.
-
-    Returns the path of the log file that was created.
-    """
+    """Tee console output into a timestamped log file; returns its path."""
     os.makedirs(_LOG_DIR, exist_ok=True)
     timestamp: str = datetime.now().strftime("%Y%m%d-%H%M%S")
     log_path: str = os.path.join(_LOG_DIR, f"train_{timestamp}.log")
@@ -663,11 +512,7 @@ def setup_logging() -> str:
 
 
 def _prune_checkpoints(ckpt_dir: str, keep: int = 3) -> None:
-    """
-    Keep only the `keep` most recent step_* checkpoints, deleting older ones.
-
-    The "final" checkpoint is never pruned.
-    """
+    """Delete all but the `keep` most recent step_* checkpoints (never "final")."""
     step_dirs = [
         d
         for d in Path(ckpt_dir).iterdir()
@@ -683,7 +528,7 @@ if __name__ == "__main__":
     initialize_distributed(tensor_model_parallel_size=1, pipeline_model_parallel_size=1)
     model_parallel_cuda_manual_seed(123)
 
-    # Record the whole run to a local log file (only rank 0 writes it).
+    # Log the run to a file (rank 0 only).
     if not torch.distributed.is_initialized() or torch.distributed.get_rank() == 0:
         setup_logging()
 
@@ -699,8 +544,7 @@ if __name__ == "__main__":
         f"params={num_params / 1e6:.1f}M"
     )
 
-    # Wrap model with DistributedDataParallel for proper gradient synchronization.
-    # This provides the finish_grad_sync() method required by finalize_model_grads().
+    # Wrap the model in Megatron DDP for gradient synchronization.
     config: TransformerConfig = gpt_model.config
     ddp_config: DistributedDataParallelConfig = DistributedDataParallelConfig(
         grad_reduce_in_fp32=False,
@@ -719,7 +563,7 @@ if __name__ == "__main__":
 
     forward_backward_func: Callable[..., Dict[str, Any]] = get_forward_backward_func()
 
-    # Train for multiple epochs: each epoch covers the whole training split once.
+    # Total steps: one pass over the training split per epoch.
     steps_per_epoch: int = math.ceil(num_train_samples / _MICRO_BATCH_SIZE)
     total_iterations: int = _NUM_EPOCHS * steps_per_epoch
     print(
@@ -727,7 +571,7 @@ if __name__ == "__main__":
         f"{total_iterations} total steps ({num_train_samples} samples/epoch)"
     )
 
-    # Baseline validation loss and samples before any training.
+    # Baseline eval before any training.
     evaluate_and_generate(
         step_label="step_0",
         gpt_model=gpt_model,
@@ -736,7 +580,7 @@ if __name__ == "__main__":
         forward_backward_func=forward_backward_func,
     )
 
-    # Release cached blocks left by the baseline eval so training starts clean.
+    # Free GPU memory left over from the baseline eval.
     gc.collect()
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
@@ -747,7 +591,7 @@ if __name__ == "__main__":
         step_in_epoch: int = iteration % steps_per_epoch + 1
 
         optim.zero_grad()
-        # Reset Megatron DDP's internal gradient buffers (param.main_grad).
+        # Reset DDP's internal gradient buffers.
         gpt_model.zero_grad_buffer()
 
         losses_reduced: Dict[str, Any] = forward_backward_func(
@@ -761,15 +605,10 @@ if __name__ == "__main__":
             forward_only=False,
         )
 
-        # Finalize model gradients: all-reduce across DP and TP groups.
-        # This synchronizes gradients for non-tensor-parallel parameters (e.g., LayerNorm)
-        # across tensor parallel ranks and all gradients across data parallel ranks.
+        # All-reduce gradients across data/tensor parallel ranks.
         finalize_model_grads([gpt_model])
 
-        # IMPORTANT: Megatron-Core DDP moves gradients out of param.grad into its
-        # own param.main_grad buffer during backward and sets param.grad to None.
-        # torch.optim.Adam only reads param.grad, so without this bridge the
-        # optimizer never updates the model (loss stays at the random-init value).
+        # Megatron DDP keeps grads in main_grad; move them to param.grad for Adam.
         for param in gpt_model.parameters():
             main_grad = getattr(param, "main_grad", None)
             if main_grad is not None:
@@ -783,7 +622,7 @@ if __name__ == "__main__":
 
         optim.step()
 
-        # Linear LR warmup (helps stability in the first steps).
+        # Linear LR warmup for stable early training.
         if _LR_WARMUP_STEPS > 0 and iteration + 1 < _LR_WARMUP_STEPS:
             warm_lr: float = _LEARNING_RATE * (iteration + 1) / _LR_WARMUP_STEPS
         else:
@@ -792,15 +631,13 @@ if __name__ == "__main__":
             param_group["lr"] = warm_lr
 
         if (iteration + 1) % _LOG_INTERVAL == 0 or (iteration + 1) == total_iterations:
-            # Total L2 norm of all gradients (diagnostic: if it is ~0, gradients
-            # are not flowing and the model cannot learn).
+            # Full grad norm (diagnostic: ~0 means gradients are not flowing).
             grad_norm: float = 0.0
             for param in gpt_model.parameters():
                 if param.grad is not None:
                     grad_norm += param.grad.float().norm().item() ** 2
             grad_norm = grad_norm ** 0.5
-            # Show the RAW gradient norm as the primary number (post-clip is just
-            # capped at _GRAD_CLIP and reads 1.0 whenever clipping engages).
+            # Report the pre-clip norm (post-clip always reads _GRAD_CLIP).
             if _GRAD_CLIP > 0 and raw_grad_norm >= 0:
                 grad_str: str = f"grad_norm={raw_grad_norm:.2f}"
                 if raw_grad_norm > _GRAD_CLIP:
@@ -814,7 +651,7 @@ if __name__ == "__main__":
                 f"lr={optim.param_groups[0]['lr']:.2e} {_gpu_mem_str()}"
             )
 
-        # Periodic checkpoint + validation + samples.
+        # Periodic checkpoint + eval + samples.
         if (iteration + 1) % _CKPT_INTERVAL == 0 or (iteration + 1) == total_iterations:
             ckpt_step_dir: str = os.path.join(_CKPT_DIR, f"step_{iteration + 1}")
             Path(ckpt_step_dir).mkdir(parents=True, exist_ok=True)
@@ -834,7 +671,7 @@ if __name__ == "__main__":
     Path(final_ckpt_path).mkdir(parents=True, exist_ok=True)
     save_distributed_checkpoint(gpt_model=gpt_model, checkpoint_path=final_ckpt_path)
 
-    # Load back the final checkpoint to verify the save/load round-trip.
+    # Verify the save/load round-trip.
     gpt_model = load_distributed_checkpoint(
         gpt_model=gpt_model, checkpoint_path=final_ckpt_path
     )
