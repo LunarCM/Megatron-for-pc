@@ -38,8 +38,10 @@ PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True  torchrun --nproc_per_node=1 ex
 ```
 
 ## 训练结果
-
-![训练信息](https://raw.githubusercontent.com/LunarCM/Megatron-for-pc/main/examples/logs/log.png)
+```bash
+cat example/logs/xxx.log
+```
+PS: 本人主机散热不好，怕显卡中暑就提前中断了..
 
 
 ## THANKS
