@@ -36,6 +36,10 @@ cp -r tokenizer simplestories-4k-megatron
 ```bash
 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True  torchrun --nproc_per_node=1 examples/run_simplestories_train_loop.py
 ```
+moe版
+```bash
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True  torchrun --nproc_per_node=1 examples/run_simplestories_moe_train_loop.py
+```
 
 ## 训练结果
 ```bash
